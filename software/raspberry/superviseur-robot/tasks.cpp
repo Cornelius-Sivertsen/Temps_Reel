@@ -167,6 +167,10 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_start(&th_getBatteryStatus, (void(*)(void*)) & Tasks::GetBatteryStatusTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
 
     cout << "Tasks launched" << endl << flush;
 }
@@ -413,5 +417,13 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
     } /**/
 
     return msg;
+}
+
+/**
+ * Periodically check battery status and show it in GUI, if battery is enabled.
+ */
+void Tasks::GetBatteryStatusTask(void){
+    //do stuff
+    
 }
 
