@@ -446,6 +446,8 @@ void Tasks::GetBatteryStatusTask(void){
         rt_task_wait_period(NULL);
         
         cout << " Battery update" << endl << flush;
+
+	//Test change
         
         //Check if robot is started:
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
