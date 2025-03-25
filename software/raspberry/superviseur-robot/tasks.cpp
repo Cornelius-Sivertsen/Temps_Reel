@@ -128,6 +128,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_camera, "th_camera", 0, PRIORITY_TCAMERA, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -173,6 +177,10 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_periodicGetBatteryStatus, (void(*)(void*)) & Tasks::periodic_GetBatteryStatusTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_camera, (void(*)(void*)) & Tasks::cameraTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -425,7 +433,7 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
 }
 
 /**
- * Periodically check battery status and show it in GUI, if battery is enabled.
+ * Periodically check battery status and show it in GUI.
  */
 
 
@@ -464,8 +472,9 @@ void Tasks::periodic_GetBatteryStatusTask(void){
     }
 }
 
-void Tasks::OpenCamera(void){
-    //Status: very early WIP. Thread creation and running not yet coded.
+void Tasks::cameraTask(void){
+    //Status: WIP. Missing: handle opening and closing of camera + error handling,
+    //make thread periodic
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
@@ -474,12 +483,20 @@ void Tasks::OpenCamera(void){
     
     Camera *cam;
     cam = new Camera(sm, 10);
+    
     cam->Open();
     
     printf("Camera status (1=open, 0=closed): %d\n", cam->Open());
     
     
-    Img * img = new Img(cam->Grab());
-    MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img)
-            
+    
+    while(1){
+        Img * img = new Img(cam->Grab());
+        MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
+        cout << "Sending image" << endl << flush;
+        rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+        monitor.Write(msgImg);
+        rt_mutex_release(&mutex_monitor);
+    }
+    
 }
