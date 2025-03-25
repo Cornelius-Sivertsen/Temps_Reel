@@ -124,7 +124,7 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_getBatteryStatus, "th_getBatteryStatus", 0, PRIORITY_TBATTERY, 0)) {
+    if (err = rt_task_create(&th_periodicGetBatteryStatus, "th_getBatteryStatus", 0, PRIORITY_TBATTERY, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -172,7 +172,7 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_getBatteryStatus, (void(*)(void*)) & Tasks::GetBatteryStatusTask, this)) {
+    if (err = rt_task_start(&th_periodicGetBatteryStatus, (void(*)(void*)) & Tasks::periodic_GetBatteryStatusTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -429,7 +429,7 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
  */
 
 
-void Tasks::GetBatteryStatusTask(void){
+void Tasks::periodic_GetBatteryStatusTask(void){
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
@@ -475,6 +475,7 @@ void Tasks::OpenCamera(void){
     Camera *cam;
     cam = new Camera(sm, 10);
     cam->Open();
+    
     printf("Camera status (1=open, 0=closed): %d\n", cam->Open());
     
     
