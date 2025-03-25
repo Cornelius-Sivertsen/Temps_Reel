@@ -26,6 +26,7 @@
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
+#define PRIORITY_TBATTERY 40
 
 /*
  * Some remarks:
@@ -120,6 +121,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_create(&th_move, "th_move", 0, PRIORITY_TMOVE, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_getBatteryStatus, "th_getBatteryStatus", 0, PRIORITY_TBATTERY, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -422,8 +427,58 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
 /**
  * Periodically check battery status and show it in GUI, if battery is enabled.
  */
+
+
 void Tasks::GetBatteryStatusTask(void){
-    //do stuff
     
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    MessageBattery * msg;
+    bool hasRobotStarted;
+    
+    // Task starts here
+    rt_task_set_periodic(NULL, TM_NOW, 500*1000000); // supposed to be 500ms    
+    
+    
+    while(1){
+        rt_task_wait_period(NULL);
+        
+        cout << " Battery update" << endl << flush;
+        
+        //Check if robot is started:
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        hasRobotStarted = robotStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        
+        if (hasRobotStarted){
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            msg = (MessageBattery*)robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
+            rt_mutex_release(&mutex_robot);
+            
+            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(msg);
+            rt_mutex_release(&mutex_monitor);
+        }      
+    }
 }
 
+void Tasks::OpenCamera(void){
+    //Status: very early WIP. Thread creation and running not yet coded.
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    
+    Camera *cam;
+    cam = new Camera(sm, 10);
+    cam->Open();
+    printf("Camera status (1=open, 0=closed): %d\n", cam->Open());
+    
+    
+    Img * img = new Img(cam->Grab());
+    MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img)
+            
+}

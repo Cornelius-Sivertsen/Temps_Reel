@@ -85,7 +85,7 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
-
+    RT_MUTEX mutex_readMsg;
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
@@ -137,6 +137,11 @@ private:
      * @brief Thread handling checking of battery status.
      */
     void GetBatteryStatusTask(void);
+    
+     /**
+     * @brief Thread handling opening camera.
+     */
+    void OpenCamera(void);
     
     
     /**********************************************************************/
