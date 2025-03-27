@@ -320,7 +320,7 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         } else if  (msgRcv->CompareID(MESSAGE_CAM_OPEN) ||
                     (msgRcv->CompareID(MESSAGE_CAM_CLOSE)))
                 {
-            //get mutex activity
+            //get mutex for camera activity
             rt_mutex_acquire(&mutex_cameraActivity, TM_INFINITE);
             //Set correct cameraActivity
             if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
@@ -502,10 +502,13 @@ void Tasks::periodic_GetBatteryStatusTask(void){
         rt_mutex_release(&mutex_robotStarted);
         
         if (hasRobotStarted){
+            
+            //Get battery status from robot
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             msg = (MessageBattery*)robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
             rt_mutex_release(&mutex_robot);
             
+            //Send battery status to monitor
             rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
             monitor.Write(msg);
             rt_mutex_release(&mutex_monitor);
@@ -518,6 +521,7 @@ void Tasks::cameraActivateTask(void){
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     
+    // For ack/nack message
     Message *msgResponse;
     
     // Synchronization barrier (waiting that all tasks are starting)
@@ -525,13 +529,17 @@ void Tasks::cameraActivateTask(void){
     
     
     while(1){
+        
+        // Wait for activation of camera from monitor
         rt_sem_p(&sem_cameraActivity, TM_INFINITE);
         
+        //Check if turning on or off
         rt_mutex_acquire(&mutex_cameraActivity, TM_INFINITE);
         if (cameraActivity == 2){
             rt_mutex_release(&mutex_cameraActivity);
             
             rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+            //Open camera and check if success or not
             if (!Cam.Open()){ //Req. 13
                 rt_mutex_release(&mutex_camera);
                 //Send error msg

@@ -70,7 +70,7 @@ private:
     
     int cameraActivity = 0; // 0: do nothing, 1: close camera, 2: open camera
     
-    Camera Cam = Camera(sm, 10);
+    Camera Cam = Camera(sm, 10); //Shared object used to access the camera.
     
 
     
@@ -104,7 +104,7 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
-    RT_SEM sem_cameraActivity; //Close or open camera
+    RT_SEM sem_cameraActivity; //Used to signal opening/closing of camera
 
     /**********************************************************************/
     /* Message queues                                                     */
