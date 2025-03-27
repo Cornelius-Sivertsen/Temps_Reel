@@ -77,7 +77,7 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_periodicGetBatteryStatus; // Periodically checks battery status of robot
-    RT_TASK th_camera; // Thread handling camera
+    RT_TASK th_cameraSend; // Thread handling camera
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -142,7 +142,7 @@ private:
      /**
      * @brief Thread handling opening camera.
      */
-    void cameraTask(void);
+    void periodic_cameraSendTask(void);
     
     
     /**********************************************************************/

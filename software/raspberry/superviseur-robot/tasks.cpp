@@ -28,6 +28,8 @@
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_TBATTERY 40
 
+#define CLOCKTICKS_TO_MS 1000000
+
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -128,7 +130,7 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_camera, "th_camera", 0, PRIORITY_TCAMERA, 0)) {
+    if (err = rt_task_create(&th_cameraSend, "th_camera", 0, PRIORITY_TCAMERA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -180,7 +182,7 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_camera, (void(*)(void*)) & Tasks::cameraTask, this)) {
+    if (err = rt_task_start(&th_cameraSend, (void(*)(void*)) & Tasks::periodic_cameraSendTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -447,7 +449,7 @@ void Tasks::periodic_GetBatteryStatusTask(void){
     bool hasRobotStarted;
     
     // Task starts here
-    rt_task_set_periodic(NULL, TM_NOW, 500*1000000); // supposed to be 500ms    
+    rt_task_set_periodic(NULL, TM_NOW, 500*CLOCKTICKS_TO_MS); //500ms    
     
     
     while(1){
@@ -472,7 +474,10 @@ void Tasks::periodic_GetBatteryStatusTask(void){
     }
 }
 
-void Tasks::cameraTask(void){
+
+
+
+void Tasks::periodic_cameraSendTask(void){
     //Status: WIP. Missing: handle opening and closing of camera + error handling,
     //make thread periodic
     
@@ -481,22 +486,31 @@ void Tasks::cameraTask(void){
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
     
+    // Task starts here
+    rt_task_set_periodic(NULL, TM_NOW, 100*CLOCKTICKS_TO_MS); //100 ms
+    
     Camera *cam;
     cam = new Camera(sm, 10);
     
     cam->Open();
     
-    printf("Camera status (1=open, 0=closed): %d\n", cam->Open());
+    printf("Camera is %s\n", cam->Open() ? "Open" : "Closed");
+    
+    bool cameraIsOpen = true;
     
     
     
     while(1){
-        Img * img = new Img(cam->Grab());
-        MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
-        cout << "Sending image" << endl << flush;
-        rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-        monitor.Write(msgImg);
-        rt_mutex_release(&mutex_monitor);
-    }
-    
+        rt_task_wait_period(NULL);
+        
+        if (cameraIsOpen){
+            Img * img = new Img(cam->Grab());
+            MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
+            cout << "Sending image" << endl << flush;
+            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(msgImg);
+            rt_mutex_release(&mutex_monitor);
+            delete img;
+        }
+    }  
 }
