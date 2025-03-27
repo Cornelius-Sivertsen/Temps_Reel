@@ -67,6 +67,13 @@ private:
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
     
+    
+    int cameraActivity = 0; // 0: do nothing, 1: close camera, 2: open camera
+    
+    Camera Cam = Camera(sm, 10);
+    
+
+    
     /**********************************************************************/
     /* Tasks                                                              */
     /**********************************************************************/
@@ -78,6 +85,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_periodicGetBatteryStatus; // Periodically checks battery status of robot
     RT_TASK th_cameraSend; // Thread handling camera
+    RT_TASK th_cameraActivity; //Turn camera on and off
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -87,6 +95,8 @@ private:
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_readMsg;
+    RT_MUTEX mutex_camera;
+    RT_MUTEX mutex_cameraActivity;
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
@@ -94,6 +104,7 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
+    RT_SEM sem_cameraActivity; //Close or open camera
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -140,9 +151,14 @@ private:
     void periodic_GetBatteryStatusTask(void);
     
      /**
-     * @brief Thread handling opening camera.
+     * @brief Thread handling sending of images from camera.
      */
     void periodic_cameraSendTask(void);
+    
+     /**
+     * @brief Thread handling opening and closing of camera.
+     */
+    void cameraActivateTask(void);
     
     
     /**********************************************************************/
