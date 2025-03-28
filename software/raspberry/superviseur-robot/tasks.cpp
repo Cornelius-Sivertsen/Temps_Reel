@@ -594,6 +594,9 @@ void Tasks::periodic_cameraSendTask(void){
         
         rt_mutex_acquire(&mutex_camera, TM_INFINITE);
         if (Cam.IsOpen()){
+            //The image should probably rather be in a shared variable, that way
+            //it can be accessed both for sending images, and for finding arena
+            //and/or for calculating position.
             Img * img = new Img(Cam.Grab());
             MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
             cout << "Sending image" << endl << flush;
