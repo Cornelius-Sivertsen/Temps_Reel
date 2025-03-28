@@ -571,8 +571,6 @@ void Tasks::cameraActivateTask(void){
             rt_mutex_release(&mutex_cameraActivity);
         }
         
-        
-        
     }                
     
 }
@@ -580,10 +578,7 @@ void Tasks::cameraActivateTask(void){
 
 
 void Tasks::periodic_cameraSendTask(void){
-    //Status: WIP. Missing: handle opening and closing of camera + error handling,
-    //make thread periodic
-    
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
