@@ -81,6 +81,9 @@ private:
     
     Camera Cam = Camera(sm, 10); //Shared object used to access the camera.
     
+    Arena foundArena;
+    bool arenaConfirmed = false;
+    
 
     
     /**********************************************************************/
@@ -95,6 +98,7 @@ private:
     RT_TASK th_periodicGetBatteryStatus; // Periodically checks battery status of robot
     RT_TASK th_cameraSend; // Thread handling camera
     RT_TASK th_cameraChangeActivity; //Turn camera on and off
+    RT_TASK th_findArena;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -107,6 +111,8 @@ private:
     RT_MUTEX mutex_camera;
     RT_MUTEX mutex_cameraActions; //Protects cameraActions enum
     RT_MUTEX mutex_imageStreamActive; //Protects imageStreamActive bool
+    RT_MUTEX mutex_arena; //Protects all shared data regarding to the arena
+    
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
@@ -114,7 +120,9 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
-    RT_SEM sem_cameraActivity; //Used to signal opening/closing of camera
+    RT_SEM sem_cameraActivity; //Used to signal changing of camera activity
+    RT_SEM sem_askArena; //Trigger finding of arena
+    RT_SEM sem_arenaConfirm;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -188,7 +196,14 @@ private:
      */
     Message *ReadInQueue(RT_QUEUE *queue);
 
+    
+    /**
+     * Finds arena and sends to monitor
+     */
+    void findArenaTask(void);
+    
 };
+
 
 #endif // __TASKS_H__ 
 

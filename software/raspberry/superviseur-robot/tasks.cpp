@@ -28,6 +28,7 @@
 #define PRIORITY_TCAMERA_CHANGEACTIVITY 21
 #define PRIORITY_TCAMERA_SEND 23
 #define PRIORITY_TBATTERY 40
+#define PRIORITY_TARENA 35
 
 #define CLOCKTICKS_TO_MS 1000000
 
@@ -89,6 +90,11 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_arena, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    
     
     cout << "Mutexes created successfully" << endl << flush;
 
@@ -115,6 +121,16 @@ void Tasks::Init() {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_sem_create(&sem_askArena, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_arenaConfirm, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    
+    
     
     cout << "Semaphores created successfully" << endl << flush;
 
@@ -154,6 +170,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_create(&th_cameraChangeActivity, "th_cameraChangeActivity", 0, PRIORITY_TCAMERA_CHANGEACTIVITY, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_findArena, "th_findArena", 0, PRIORITY_TARENA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -210,6 +230,10 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_cameraChangeActivity, (void(*)(void*)) & Tasks::cameraChangeActivityTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_findArena, (void(*)(void*)) & Tasks::findArenaTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -337,6 +361,16 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             
             //Release camera change activity semaphore
             rt_sem_v(&sem_cameraActivity);
+        } else if (msgRcv->CompareID(MESSAGE_CAM_ASK_ARENA)){
+            rt_sem_v(&sem_askArena); //trigger arena finding task
+        } else if (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) or
+                   msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM) ){
+            
+            rt_mutex_acquire(&mutex_arena, TM_INFINITE);
+            arenaConfirmed = (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM));
+            rt_mutex_release(&mutex_arena);
+            
+            rt_sem_v(&sem_arenaConfirm); 
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -608,7 +642,7 @@ void Tasks::cameraChangeActivityTask(void){
 
 
 void Tasks::periodic_cameraSendTask(void){
-     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
@@ -644,3 +678,96 @@ void Tasks::periodic_cameraSendTask(void){
             }    
     }  
 }
+
+
+
+void Tasks::findArenaTask(void){
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    Arena potentialArena;
+    
+    bool cameraWasClosed = false; 
+    
+    // For ack/nack message
+    Message *msgResponse;
+    
+    
+    while(1){
+        rt_sem_p(&sem_askArena, TM_INFINITE);
+        cout << "finding arena" << endl << flush;
+        
+        //Check if camera is open
+        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        if (Cam.IsOpen()){ //Yes-> stop image stream
+            rt_mutex_release(&mutex_camera);
+            
+            rt_mutex_acquire(&mutex_cameraActions, TM_INFINITE);
+            cameraAction = stopImageStream;
+            rt_mutex_release(&mutex_cameraActions);
+            
+            rt_sem_v(&sem_cameraActivity);            
+        }
+        else { //No -> open camera locally
+            Cam.Open();
+            rt_mutex_release(&mutex_camera);
+            cameraWasClosed = true;
+        }
+        
+        //Grab image from camera
+        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        Img * img = new Img(Cam.Grab());
+        
+        //(Close camera if camera was not already open)
+        if (cameraWasClosed){
+            Cam.Close();
+        }
+        rt_mutex_release(&mutex_camera);
+             
+        //Extract arena
+        potentialArena = img->SearchArena();
+        
+        //Check if arena was not found
+        if (potentialArena.IsEmpty()){
+            cout << "Arena not found" << endl << flush;
+            
+            msgResponse = new Message(MESSAGE_ANSWER_NACK);
+            WriteInQueue(&q_messageToMon, msgResponse);
+        }
+        
+        
+        //Send arena to monitor
+        img->DrawArena(potentialArena);
+        
+        MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
+        cout << "Sending image" << endl << flush;                
+        rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+        monitor.Write(msgImg); // The message is deleted with the Write
+        rt_mutex_release(&mutex_monitor); 
+        delete img;
+        
+        //Wait for response
+        rt_sem_p(&sem_arenaConfirm, TM_INFINITE);
+        
+        //Check response
+        rt_mutex_acquire(&mutex_arena, TM_INFINITE);
+        if (arenaConfirmed){
+            foundArena = potentialArena;
+        }
+        rt_mutex_release(&mutex_arena);
+        
+        //Restart camera 
+        rt_mutex_acquire(&mutex_cameraActions, TM_INFINITE);
+        cameraAction = startImageStream;
+        rt_mutex_release(&mutex_cameraActions);
+        
+        rt_sem_v(&sem_cameraActivity);   
+        
+        //TODO: Make arena appear on all images sent after an arena has been
+        //confirmed.
+    }
+    
+}
+
+
