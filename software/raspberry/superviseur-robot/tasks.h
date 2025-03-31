@@ -73,7 +73,7 @@ private:
         closeCamera,
         stopImageStream,
         startImageStream
-    } cameraAction; 
+    } cameraAction = closeCamera; 
     
     
     bool imageStreamActive = false; //True if supervisor is supposed to be

@@ -515,9 +515,7 @@ void Tasks::periodic_GetBatteryStatusTask(void){
             rt_mutex_release(&mutex_robot);
             
             //Send battery status to monitor
-            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-            monitor.Write(msg);
-            rt_mutex_release(&mutex_monitor);
+            WriteInQueue(&q_messageToMon, msg);
         }      
     }
 }
@@ -557,10 +555,8 @@ void Tasks::cameraChangeActivityTask(void){
                     //Send error msg
                     msgResponse = new Message(MESSAGE_ANSWER_NACK);
                     cout << "Camera failed to open" << endl << flush;
-
-                    rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-                    monitor.Write(msgResponse);
-                    rt_mutex_release(&mutex_monitor);
+                    
+                    WriteInQueue(&q_messageToMon, msgResponse);            
                 }
                 else rt_mutex_release(&mutex_camera);
                     
@@ -580,15 +576,13 @@ void Tasks::cameraChangeActivityTask(void){
                 rt_mutex_acquire(&mutex_camera, TM_INFINITE);
                 
                 //Avoid attempting to close camera if it is already closed
-                if (Cam.IsOpen){
+                if (Cam.IsOpen()){
                     Cam.Close();
                 }
                 
                 rt_mutex_release(&mutex_camera);           
                 msgResponse = new Message(MESSAGE_ANSWER_ACK);             
-                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-                monitor.Write(msgResponse);
-                rt_mutex_release(&mutex_monitor);           
+                WriteInQueue(&q_messageToMon, msgResponse);           
                 
                 break;
             case stopImageStream:
@@ -640,10 +634,10 @@ void Tasks::periodic_cameraSendTask(void){
                 //and/or for calculating position.
                 Img * img = new Img(Cam.Grab());
                 MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
-                cout << "Sending image" << endl << flush;
+                cout << "Sending image" << endl << flush;                
                 rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-                monitor.Write(msgImg);
-                rt_mutex_release(&mutex_monitor);
+                monitor.Write(msgImg); // The message is deleted with the Write
+                rt_mutex_release(&mutex_monitor);               
                 delete img;
             }
             rt_mutex_release(&mutex_camera);        
