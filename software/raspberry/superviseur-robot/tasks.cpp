@@ -335,7 +335,7 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_cameraActions);
             //release mutex
             
-            //Release camera activity semaphore
+            //Release camera change activity semaphore
             rt_sem_v(&sem_cameraActivity);
         }
         delete(msgRcv); // mus be deleted manually, no consumer
@@ -531,11 +531,10 @@ void Tasks::cameraChangeActivityTask(void){
     Message *msgResponse;
     
     //Temporary variable for storing the wanted camera action
-    enum cameraActions_t cameraAction_temp;
+    enum cameraActions_t cameraAction_temp = closeCamera;
      
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
-    
     
     
     
@@ -572,14 +571,19 @@ void Tasks::cameraChangeActivityTask(void){
                 
                 break;
             case closeCamera:
-                 //Stop sending images
+                //Stop sending images
                 rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
                 imageStreamActive = false;
                 rt_mutex_release(&mutex_imageStreamActive);
 
 
-                rt_mutex_acquire(&mutex_camera, TM_INFINITE);           
-                Cam.Close();
+                rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+                
+                //Avoid attempting to close camera if it is already closed
+                if (Cam.IsOpen){
+                    Cam.Close();
+                }
+                
                 rt_mutex_release(&mutex_camera);           
                 msgResponse = new Message(MESSAGE_ANSWER_ACK);             
                 rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
@@ -588,21 +592,23 @@ void Tasks::cameraChangeActivityTask(void){
                 
                 break;
             case stopImageStream:
-                ;
+                //Stop sending images
+                rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
+                imageStreamActive = false;
+                rt_mutex_release(&mutex_imageStreamActive);
+             
                 break;
             case startImageStream:
-                ;
+                
+                //Start image stream:
+                rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
+                imageStreamActive = true;
+                rt_mutex_release(&mutex_imageStreamActive);                
                 break;
             default:
                 ;
-        }
-        
-         
-        //elsif stop sending images without closing camera
-        //elsif restart sending images without re-opening a new camera
-             
-    }                
-    
+        }             
+    }                    
 } 
 
 
