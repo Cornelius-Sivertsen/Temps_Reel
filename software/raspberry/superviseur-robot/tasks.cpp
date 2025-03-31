@@ -25,7 +25,7 @@
 #define PRIORITY_TSENDTOMON 22
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
-#define PRIORITY_TCAMERA_ACTIVATE 21
+#define PRIORITY_TCAMERA_ACTIVATE 18
 #define PRIORITY_TCAMERA_SEND 23
 #define PRIORITY_TBATTERY 40
 
@@ -82,6 +82,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_mutex_create(&mutex_cameraActivity, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_imageSendingActive, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -526,8 +530,13 @@ void Tasks::cameraActivateTask(void){
     // For ack/nack message
     Message *msgResponse;
     
+    //Check if turning on or off
+    int wanted_camera_activity = 0;
+     
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    
     
     
     while(1){
@@ -535,10 +544,12 @@ void Tasks::cameraActivateTask(void){
         // Wait for activation of camera from monitor
         rt_sem_p(&sem_cameraActivity, TM_INFINITE);
         
-        //Check if turning on or off
         rt_mutex_acquire(&mutex_cameraActivity, TM_INFINITE);
-        if (cameraActivity == 2){
-            rt_mutex_release(&mutex_cameraActivity);
+        wanted_camera_activity = cameraActivity;
+        rt_mutex_release(&mutex_cameraActivity);
+        
+        
+        if (wanted_camera_activity == 2){          
             
             rt_mutex_acquire(&mutex_camera, TM_INFINITE);
             //Open camera and check if success or not
@@ -554,25 +565,32 @@ void Tasks::cameraActivateTask(void){
             }
             else rt_mutex_release(&mutex_camera);
             
+            rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
+            imageSendingActive = true;
+            rt_mutex_release(&mutex_imageSendingActive);
+            
+            
         }                
-        else if (cameraActivity == 1){ //Req. 15
-            rt_mutex_release(&mutex_cameraActivity);
-            rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        else if (wanted_camera_activity == 1){ //Req. 15            
+            
+            //Stop sending images
+            rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
+            imageSendingActive = false;
+            rt_mutex_release(&mutex_imageSendingActive);
+            
+            
+            rt_mutex_acquire(&mutex_camera, TM_INFINITE);           
             Cam.Close();
-            rt_mutex_release(&mutex_camera);
-            
-            msgResponse = new Message(MESSAGE_ANSWER_ACK);
-            cout << "Camera closed" << endl << flush;   
-            
+            rt_mutex_release(&mutex_camera);           
+            msgResponse = new Message(MESSAGE_ANSWER_ACK);             
             rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
             monitor.Write(msgResponse);
-            rt_mutex_release(&mutex_monitor); 
-        }
-            
-        else{
-            rt_mutex_release(&mutex_cameraActivity);
+            rt_mutex_release(&mutex_monitor);                        
         }
         
+        //elsif stop sending images without closing camera
+        //elsif restart sending images without re-opening a new camera
+             
     }                
     
 }
@@ -584,27 +602,35 @@ void Tasks::periodic_cameraSendTask(void){
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
-    
+    bool image_sending_active_temp = false;
+        
     // Task starts here
     rt_task_set_periodic(NULL, TM_NOW, 100*CLOCKTICKS_TO_MS); //100 ms
    
- 
     while(1){
         rt_task_wait_period(NULL);
         
-        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
-        if (Cam.IsOpen()){
-            //The image should probably rather be in a shared variable, that way
-            //it can be accessed both for sending images, and for finding arena
-            //and/or for calculating position.
-            Img * img = new Img(Cam.Grab());
-            MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
-            cout << "Sending image" << endl << flush;
-            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-            monitor.Write(msgImg);
-            rt_mutex_release(&mutex_monitor);
-            delete img;
-        }
-        rt_mutex_release(&mutex_camera); 
+        rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
+        image_sending_active_temp = imageSendingActive;
+        rt_mutex_release(&mutex_imageSendingActive);
+        
+        
+        if (image_sending_active_temp){
+            rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        
+            if (Cam.IsOpen()){
+                //The image should probably rather be in a shared variable, that way
+                //it can be accessed both for sending images, and for finding arena
+                //and/or for calculating position.
+                Img * img = new Img(Cam.Grab());
+                MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
+                cout << "Sending image" << endl << flush;
+                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                monitor.Write(msgImg);
+                rt_mutex_release(&mutex_monitor);
+                delete img;
+            }
+            rt_mutex_release(&mutex_camera);        
+            }    
     }  
 }

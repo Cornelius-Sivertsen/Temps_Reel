@@ -69,6 +69,8 @@ private:
     
     
     int cameraActivity = 0; // 0: do nothing, 1: close camera, 2: open camera
+    bool imageSendingActive = false; //True if supervisor is supposed to be
+                                     //currently sending images to monitor
     
     Camera Cam = Camera(sm, 10); //Shared object used to access the camera.
     
@@ -97,6 +99,7 @@ private:
     RT_MUTEX mutex_readMsg;
     RT_MUTEX mutex_camera;
     RT_MUTEX mutex_cameraActivity;
+    RT_MUTEX mutex_imageSendingActive;
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
