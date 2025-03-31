@@ -67,9 +67,16 @@ private:
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
     
+    // The action asked for by the monitor in the latest received cam message
+    enum cameraActions_t{
+        openCamera,
+        closeCamera,
+        stopImageStream,
+        startImageStream
+    } cameraAction; 
     
-    int cameraActivity = 0; // 0: do nothing, 1: close camera, 2: open camera
-    bool imageSendingActive = false; //True if supervisor is supposed to be
+    
+    bool imageStreamActive = false; //True if supervisor is supposed to be
                                      //currently sending images to monitor
     
     Camera Cam = Camera(sm, 10); //Shared object used to access the camera.
@@ -87,7 +94,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_periodicGetBatteryStatus; // Periodically checks battery status of robot
     RT_TASK th_cameraSend; // Thread handling camera
-    RT_TASK th_cameraActivity; //Turn camera on and off
+    RT_TASK th_cameraChangeActivity; //Turn camera on and off
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -98,8 +105,8 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_readMsg;
     RT_MUTEX mutex_camera;
-    RT_MUTEX mutex_cameraActivity;
-    RT_MUTEX mutex_imageSendingActive;
+    RT_MUTEX mutex_cameraActions; //Protects cameraActions enum
+    RT_MUTEX mutex_imageStreamActive; //Protects imageStreamActive bool
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
@@ -161,7 +168,7 @@ private:
      /**
      * @brief Thread handling opening and closing of camera.
      */
-    void cameraActivateTask(void);
+    void cameraChangeActivityTask(void);
     
     
     /**********************************************************************/

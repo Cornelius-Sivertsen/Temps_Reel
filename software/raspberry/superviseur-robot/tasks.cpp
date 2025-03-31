@@ -25,7 +25,7 @@
 #define PRIORITY_TSENDTOMON 22
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
-#define PRIORITY_TCAMERA_ACTIVATE 18
+#define PRIORITY_TCAMERA_CHANGEACTIVITY 21
 #define PRIORITY_TCAMERA_SEND 23
 #define PRIORITY_TBATTERY 40
 
@@ -81,11 +81,11 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_mutex_create(&mutex_cameraActivity, NULL)) {
+    if (err = rt_mutex_create(&mutex_cameraActions, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_mutex_create(&mutex_imageSendingActive, NULL)) {
+    if (err = rt_mutex_create(&mutex_imageStreamActive, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -153,7 +153,7 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_cameraActivity, "th_cameraActivity", 0, PRIORITY_TCAMERA_ACTIVATE, 0)) {
+    if (err = rt_task_create(&th_cameraChangeActivity, "th_cameraChangeActivity", 0, PRIORITY_TCAMERA_CHANGEACTIVITY, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -209,7 +209,7 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_cameraActivity, (void(*)(void*)) & Tasks::cameraActivateTask, this)) {
+    if (err = rt_task_start(&th_cameraChangeActivity, (void(*)(void*)) & Tasks::cameraChangeActivityTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -325,14 +325,14 @@ void Tasks::ReceiveFromMonTask(void *arg) {
                     (msgRcv->CompareID(MESSAGE_CAM_CLOSE)))
                 {
             //get mutex for camera activity
-            rt_mutex_acquire(&mutex_cameraActivity, TM_INFINITE);
+            rt_mutex_acquire(&mutex_cameraActions, TM_INFINITE);
             //Set correct cameraActivity
             if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
-                cameraActivity = 2;
+                cameraAction = openCamera;
             } else if ((msgRcv->CompareID(MESSAGE_CAM_CLOSE))){
-                cameraActivity = 1;
+                cameraAction = closeCamera;
             }
-            rt_mutex_release(&mutex_cameraActivity);
+            rt_mutex_release(&mutex_cameraActions);
             //release mutex
             
             //Release camera activity semaphore
@@ -523,15 +523,15 @@ void Tasks::periodic_GetBatteryStatusTask(void){
 }
 
 
-void Tasks::cameraActivateTask(void){
+void Tasks::cameraChangeActivityTask(void){
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     
     // For ack/nack message
     Message *msgResponse;
     
-    //Check if turning on or off
-    int wanted_camera_activity = 0;
+    //Temporary variable for storing the wanted camera action
+    enum cameraActions_t cameraAction_temp;
      
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
@@ -544,56 +544,66 @@ void Tasks::cameraActivateTask(void){
         // Wait for activation of camera from monitor
         rt_sem_p(&sem_cameraActivity, TM_INFINITE);
         
-        rt_mutex_acquire(&mutex_cameraActivity, TM_INFINITE);
-        wanted_camera_activity = cameraActivity;
-        rt_mutex_release(&mutex_cameraActivity);
+        rt_mutex_acquire(&mutex_cameraActions, TM_INFINITE);
+        cameraAction_temp = cameraAction;
+        rt_mutex_release(&mutex_cameraActions);
         
-        
-        if (wanted_camera_activity == 2){          
-            
-            rt_mutex_acquire(&mutex_camera, TM_INFINITE);
-            //Open camera and check if success or not
-            if (!Cam.Open()){ //Req. 13
-                rt_mutex_release(&mutex_camera);
-                //Send error msg
-                msgResponse = new Message(MESSAGE_ANSWER_NACK);
-                cout << "Camera failed to open" << endl << flush;
+        switch (cameraAction_temp){
+            case openCamera:
+                rt_mutex_acquire(&mutex_camera, TM_INFINITE);
                 
+                //Open camera and check if success or not
+                if (!Cam.Open()){ //Req. 13
+                    rt_mutex_release(&mutex_camera);
+                    //Send error msg
+                    msgResponse = new Message(MESSAGE_ANSWER_NACK);
+                    cout << "Camera failed to open" << endl << flush;
+
+                    rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                    monitor.Write(msgResponse);
+                    rt_mutex_release(&mutex_monitor);
+                }
+                else rt_mutex_release(&mutex_camera);
+                    
+                //Start image stream:
+                rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
+                imageStreamActive = true;
+                rt_mutex_release(&mutex_imageStreamActive);
+                
+                break;
+            case closeCamera:
+                 //Stop sending images
+                rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
+                imageStreamActive = false;
+                rt_mutex_release(&mutex_imageStreamActive);
+
+
+                rt_mutex_acquire(&mutex_camera, TM_INFINITE);           
+                Cam.Close();
+                rt_mutex_release(&mutex_camera);           
+                msgResponse = new Message(MESSAGE_ANSWER_ACK);             
                 rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
                 monitor.Write(msgResponse);
-                rt_mutex_release(&mutex_monitor);
-            }
-            else rt_mutex_release(&mutex_camera);
-            
-            rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
-            imageSendingActive = true;
-            rt_mutex_release(&mutex_imageSendingActive);
-            
-            
-        }                
-        else if (wanted_camera_activity == 1){ //Req. 15            
-            
-            //Stop sending images
-            rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
-            imageSendingActive = false;
-            rt_mutex_release(&mutex_imageSendingActive);
-            
-            
-            rt_mutex_acquire(&mutex_camera, TM_INFINITE);           
-            Cam.Close();
-            rt_mutex_release(&mutex_camera);           
-            msgResponse = new Message(MESSAGE_ANSWER_ACK);             
-            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-            monitor.Write(msgResponse);
-            rt_mutex_release(&mutex_monitor);                        
+                rt_mutex_release(&mutex_monitor);           
+                
+                break;
+            case stopImageStream:
+                ;
+                break;
+            case startImageStream:
+                ;
+                break;
+            default:
+                ;
         }
         
+         
         //elsif stop sending images without closing camera
         //elsif restart sending images without re-opening a new camera
              
     }                
     
-}
+} 
 
 
 
@@ -610,9 +620,9 @@ void Tasks::periodic_cameraSendTask(void){
     while(1){
         rt_task_wait_period(NULL);
         
-        rt_mutex_acquire(&mutex_imageSendingActive, TM_INFINITE);
-        image_sending_active_temp = imageSendingActive;
-        rt_mutex_release(&mutex_imageSendingActive);
+        rt_mutex_acquire(&mutex_imageStreamActive, TM_INFINITE);
+        image_sending_active_temp = imageStreamActive;
+        rt_mutex_release(&mutex_imageStreamActive);
         
         
         if (image_sending_active_temp){
