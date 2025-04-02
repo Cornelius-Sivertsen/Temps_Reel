@@ -94,7 +94,10 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    
+    if (err = rt_mutex_create(&mutex_RobotPos, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     
     cout << "Mutexes created successfully" << endl << flush;
 
@@ -371,7 +374,16 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_arena);
             
             rt_sem_v(&sem_arenaConfirm); 
-        }
+        } else if (msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START)){
+				rt_mutex_acquire(&mutex_RobotPos, TM_INFINITE);
+				calculateRobotPosition = true;
+				rt_mutex_release(&mutex_RobotPos);
+		} else if (msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_STOP)){
+				rt_mutex_acquire(&mutex_RobotPos, TM_INFINITE);
+				calculateRobotPosition = false;
+				rt_mutex_release(&mutex_RobotPos);
+		}
+				
         delete(msgRcv); // mus be deleted manually, no consumer
     }
 }
@@ -647,6 +659,7 @@ void Tasks::periodic_cameraSendTask(void){
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
     bool image_sending_active_temp = false;
+	std::list<Position> robotPositionList;
         
     // Task starts here
     rt_task_set_periodic(NULL, TM_NOW, 100*CLOCKTICKS_TO_MS); //100 ms
@@ -664,11 +677,36 @@ void Tasks::periodic_cameraSendTask(void){
         
             if (Cam.IsOpen()){
                 Img * img = new Img(Cam.Grab());
+				rt_mutex_release(&mutex_camera);        
 
 		//Add arena to image, if an arena has been found:
                 rt_mutex_acquire(&mutex_arena, TM_INFINITE);
                 if (arenaConfirmed){
                     img->DrawArena(foundArena);
+
+					//check if we should be calculating robot position
+					rt_mutex_acquire(&mutex_RobotPos, TM_INFINITE);
+					if (calculateRobotPosition){
+							robotPositionList = img->SearchRobot(foundArena);
+
+						    //Check if position list is empty (i.e. robot not found)
+							if (robotPositionList.empty()){//if yes: construct (-1,-1) message
+						    //TODO: figure out how to construct a position object with position (-1,-1);
+							}
+							else{//if no: construct real position message, then draw pos on image
+
+									MessagePosition *msgPos = new MessagePosition(MESSAGE_CAM_POSITION, robotPositionList.front());
+									img->DrawRobot(robotPositionList.front());
+							}
+
+							//In both cases: send position message
+							cout << "Sending robot position" << endl << flush;
+
+							rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+							monitor.Write(msgPos); // The message is deleted with the Write
+							rt_mutex_release(&mutex_monitor);               
+					}
+					rt_mutex_release(&mutex_RobotPos);
                 }
                 rt_mutex_release(&mutex_arena);
 
@@ -682,7 +720,9 @@ void Tasks::periodic_cameraSendTask(void){
                 rt_mutex_release(&mutex_monitor);               
                 delete img;
             }
-            rt_mutex_release(&mutex_camera);        
+			else{
+				rt_mutex_release(&mutex_camera);        
+			}
             }    
     }  
 }
