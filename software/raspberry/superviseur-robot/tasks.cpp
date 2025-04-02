@@ -663,12 +663,20 @@ void Tasks::periodic_cameraSendTask(void){
             rt_mutex_acquire(&mutex_camera, TM_INFINITE);
         
             if (Cam.IsOpen()){
-                //The image should probably rather be in a shared variable, that way
-                //it can be accessed both for sending images, and for finding arena
-                //and/or for calculating position.
                 Img * img = new Img(Cam.Grab());
+
+				//Add arena to image, if an arena has been found:
+				rt_mutex_acquire(&mutex_arena, TM_INFINITE);
+				if (arenaConfirmed){
+						img->DrawArena(potentialArena);
+				}
+				rt_mutex_release(&mutex_arena);
+
+				//Construct message with the found image
                 MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
                 cout << "Sending image" << endl << flush;                
+
+				//Send message
                 rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
                 monitor.Write(msgImg); // The message is deleted with the Write
                 rt_mutex_release(&mutex_monitor);               
@@ -763,9 +771,6 @@ void Tasks::findArenaTask(void){
         rt_mutex_release(&mutex_cameraActions);
         
         rt_sem_v(&sem_cameraActivity);   
-        
-        //TODO: Make arena appear on all images sent after an arena has been
-        //confirmed.
     }
     
 }
