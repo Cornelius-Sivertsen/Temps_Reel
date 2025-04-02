@@ -665,18 +665,18 @@ void Tasks::periodic_cameraSendTask(void){
             if (Cam.IsOpen()){
                 Img * img = new Img(Cam.Grab());
 
-				//Add arena to image, if an arena has been found:
-				rt_mutex_acquire(&mutex_arena, TM_INFINITE);
-				if (arenaConfirmed){
-						img->DrawArena(potentialArena);
-				}
-				rt_mutex_release(&mutex_arena);
+		//Add arena to image, if an arena has been found:
+                rt_mutex_acquire(&mutex_arena, TM_INFINITE);
+                if (arenaConfirmed){
+                    img->DrawArena(foundArena);
+                }
+                rt_mutex_release(&mutex_arena);
 
-				//Construct message with the found image
+		//Construct message with the found image
                 MessageImg *msgImg=new MessageImg(MESSAGE_CAM_IMAGE, img);
                 cout << "Sending image" << endl << flush;                
 
-				//Send message
+		//Send message
                 rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
                 monitor.Write(msgImg); // The message is deleted with the Write
                 rt_mutex_release(&mutex_monitor);               
