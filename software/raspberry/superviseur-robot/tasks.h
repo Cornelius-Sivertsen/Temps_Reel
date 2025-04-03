@@ -67,10 +67,25 @@ private:
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
     
+    // The action asked for by the monitor in the latest received cam message
+    enum cameraActions_t{
+        openCamera,
+        closeCamera,
+        stopImageStream,
+        startImageStream
+    } cameraAction = closeCamera; 
     
-    int cameraActivity = 0; // 0: do nothing, 1: close camera, 2: open camera
+    
+    bool imageStreamActive = false; //True if supervisor is supposed to be
+                                     //currently sending images to monitor
     
     Camera Cam = Camera(sm, 10); //Shared object used to access the camera.
+    
+    Arena foundArena;
+    bool arenaConfirmed = false;
+
+	bool calculateRobotPosition = false; //True if monitor has activated 
+										 //position calculation.
     
 
     
@@ -85,7 +100,8 @@ private:
     RT_TASK th_move;
     RT_TASK th_periodicGetBatteryStatus; // Periodically checks battery status of robot
     RT_TASK th_cameraSend; // Thread handling camera
-    RT_TASK th_cameraActivity; //Turn camera on and off
+    RT_TASK th_cameraChangeActivity; //Turn camera on and off
+    RT_TASK th_findArena;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -96,7 +112,11 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_readMsg;
     RT_MUTEX mutex_camera;
-    RT_MUTEX mutex_cameraActivity;
+    RT_MUTEX mutex_cameraActions; //Protects cameraActions enum
+    RT_MUTEX mutex_imageStreamActive; //Protects imageStreamActive bool
+    RT_MUTEX mutex_arena; //Protects all shared data regarding to the arena
+	RT_MUTEX mutex_RobotPos; //Protects calculateRobotPosition bool
+
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
@@ -104,7 +124,9 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
-    RT_SEM sem_cameraActivity; //Used to signal opening/closing of camera
+    RT_SEM sem_cameraActivity; //Used to signal changing of camera activity
+    RT_SEM sem_askArena; //Trigger finding of arena
+    RT_SEM sem_arenaConfirm;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -158,7 +180,7 @@ private:
      /**
      * @brief Thread handling opening and closing of camera.
      */
-    void cameraActivateTask(void);
+    void cameraChangeActivityTask(void);
     
     
     /**********************************************************************/
@@ -178,7 +200,14 @@ private:
      */
     Message *ReadInQueue(RT_QUEUE *queue);
 
+    
+    /**
+     * Finds arena and sends to monitor
+     */
+    void findArenaTask(void);
+    
 };
+
 
 #endif // __TASKS_H__ 
 
