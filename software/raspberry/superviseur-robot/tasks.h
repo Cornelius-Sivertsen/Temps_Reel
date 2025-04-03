@@ -83,12 +83,12 @@ private:
     
     Arena foundArena;
     bool arenaConfirmed = false;
-
-	bool calculateRobotPosition = false; //True if monitor has activated 
-										 //position calculation.
+    
+    bool calculateRobotPosition = false; //True if monitor has activated 
+					 //position calculation.
+    
     
 
-    
     /**********************************************************************/
     /* Tasks                                                              */
     /**********************************************************************/
@@ -115,7 +115,7 @@ private:
     RT_MUTEX mutex_cameraActions; //Protects cameraActions enum
     RT_MUTEX mutex_imageStreamActive; //Protects imageStreamActive bool
     RT_MUTEX mutex_arena; //Protects all shared data regarding to the arena
-	RT_MUTEX mutex_RobotPos; //Protects calculateRobotPosition bool
+    RT_MUTEX mutex_RobotPos; //Protects calculateRobotPosition bool
 
     /**********************************************************************/
     /* Semaphores                                                         */

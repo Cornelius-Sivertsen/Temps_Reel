@@ -807,5 +807,3 @@ void Tasks::findArenaTask(void) {
     }
 
 }
-
-

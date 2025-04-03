@@ -11,8 +11,11 @@
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/tasks.h</file>
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/camera.h</file>
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/img.h</file>
+            <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/messages.cpp</file>
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/messages.h</file>
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/commonitor.h</file>
+            <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/commonitor.cpp</file>
+            <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/lib/camera.cpp</file>
             <file>file:/home/sivertse/Bureau/Sem8/Temps_Reel/dumber-master/software/raspberry/superviseur-robot/tasks.cpp</file>
         </group>
     </open-files>
