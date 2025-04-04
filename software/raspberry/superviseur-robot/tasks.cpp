@@ -348,9 +348,10 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
+            //Opening and closing of camera:
         } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN) ||
                 (msgRcv->CompareID(MESSAGE_CAM_CLOSE))) {
-            //get mutex for camera activity
+
             rt_mutex_acquire(&mutex_cameraActions, TM_INFINITE);
             //Set correct cameraActivity
             if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
@@ -359,12 +360,17 @@ void Tasks::ReceiveFromMonTask(void *arg) {
                 cameraAction = closeCamera;
             }
             rt_mutex_release(&mutex_cameraActions);
-            //release mutex
 
-            //Release camera change activity semaphore
+
+            //Release camera change activity semaphore, triggering the thread
+            //that handles changing camera activity.
             rt_sem_v(&sem_cameraActivity);
+            
+            //Starting finding of arena:
         } else if (msgRcv->CompareID(MESSAGE_CAM_ASK_ARENA)) {
             rt_sem_v(&sem_askArena); //trigger arena finding task
+            
+            //Handle confirmation/rejection of found arena
         } else if (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) or
                 msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)) {
 
@@ -373,6 +379,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_arena);
 
             rt_sem_v(&sem_arenaConfirm);
+            
+            //Detect starting and stopping of position finding
         } else if (msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START)) {
             rt_mutex_acquire(&mutex_RobotPos, TM_INFINITE);
             calculateRobotPosition = true;
@@ -523,9 +531,8 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
 }
 
 /**
- * Periodically check battery status and show it in GUI.
+ * @brief Thread that periodically sends robot's battery status to monitor
  */
-
 
 void Tasks::periodic_GetBatteryStatusTask(void) {
 
@@ -533,8 +540,8 @@ void Tasks::periodic_GetBatteryStatusTask(void) {
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
 
-    MessageBattery * msg;
-    bool hasRobotStarted;
+    MessageBattery * batteryMsg;
+    bool hasRobotStarted; // Used for checking if robot has started
 
     // Task starts here
     rt_task_set_periodic(NULL, TM_NOW, 500 * CLOCKTICKS_TO_MS); //500ms    
@@ -543,28 +550,33 @@ void Tasks::periodic_GetBatteryStatusTask(void) {
     while (1) {
         rt_task_wait_period(NULL);
 
-        cout << " Battery update" << endl << flush;
-
-        //Test change
 
         //Check if robot is started:
+        //Storing in temp variable to avoid holding mutex too long.
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
         hasRobotStarted = robotStarted;
         rt_mutex_release(&mutex_robotStarted);
 
+
         if (hasRobotStarted) {
+
+            cout << "Sending battery status" << endl << flush;
 
             //Get battery status from robot
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            msg = (MessageBattery*) robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
+            batteryMsg = (MessageBattery*) robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
             rt_mutex_release(&mutex_robot);
 
             //Send battery status to monitor
-            WriteInQueue(&q_messageToMon, msg);
+            WriteInQueue(&q_messageToMon, batteryMsg);
         }
     }
 }
 
+/**
+ * @brief Thread handling opening and closing of camera, as well as turning
+ * the image stream on/off.
+ */
 void Tasks::cameraChangeActivityTask(void) {
 
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
@@ -573,6 +585,7 @@ void Tasks::cameraChangeActivityTask(void) {
     Message *msgResponse;
 
     //Temporary variable for storing the wanted camera action
+    //Using a temp variable to avoid holding a mutex too long.
     enum cameraActions_t cameraAction_temp = closeCamera;
 
     // Synchronization barrier (waiting that all tasks are starting)
@@ -594,7 +607,7 @@ void Tasks::cameraChangeActivityTask(void) {
                 rt_mutex_acquire(&mutex_camera, TM_INFINITE);
 
                 //Open camera and check if success or not
-                if (!Cam.Open()) { //Req. 13
+                if (!Cam.Open()) {
                     rt_mutex_release(&mutex_camera);
                     //Send error msg
                     msgResponse = new Message(MESSAGE_ANSWER_NACK);
@@ -624,6 +637,7 @@ void Tasks::cameraChangeActivityTask(void) {
                 }
 
                 rt_mutex_release(&mutex_camera);
+                
                 msgResponse = new Message(MESSAGE_ANSWER_ACK);
                 WriteInQueue(&q_messageToMon, msgResponse);
 
@@ -643,24 +657,37 @@ void Tasks::cameraChangeActivityTask(void) {
                 rt_mutex_release(&mutex_imageStreamActive);
                 break;
             default:
+                //Do nothing.
                 ;
         }
     }
 }
 
+/**
+ * @brief Thread handling periodic sending of images from camera.
+ * if an arena has been found, also adds arena to image.
+ * if position calculation is enabled, also sends position and adds it to 
+ * the image
+ */
 void Tasks::periodic_cameraSendTask(void) {
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
-
+    
+    //Temporary variable to avoid holding a mutex too long
     bool image_sending_active_temp = false;
+    
+    //Used for storing the calculated robot position
     std::list<Position> robotPositionList;
+    
+    //Used for sending the calculated robot position
     MessagePosition *msgPos;
+    
     bool everyOther = false; //Used to run position finding only every other
-                             //loop.
+    //loop, if not the task takes too much CPU time.
 
     // Task starts here
-    rt_task_set_periodic(NULL, TM_NOW, 200 * CLOCKTICKS_TO_MS); //100 ms
+    rt_task_set_periodic(NULL, TM_NOW, 200 * CLOCKTICKS_TO_MS); //200 ms
     //Slower than required, if not the task takes too much processor time
 
     while (1) {
@@ -684,6 +711,8 @@ void Tasks::periodic_cameraSendTask(void) {
                     img->DrawArena(foundArena);
 
                     //check if we should be calculating robot position
+                    //Note that this code runs only every other time the thread
+                    //runs, this is to avoid saturating the CPU.
                     rt_mutex_acquire(&mutex_RobotPos, TM_INFINITE);
                     if (everyOther and calculateRobotPosition) {
                         robotPositionList = img->SearchRobot(foundArena);
@@ -698,6 +727,8 @@ void Tasks::periodic_cameraSendTask(void) {
                             msgPos = new MessagePosition(MESSAGE_CAM_POSITION, robotPositionList.front());
                             img->DrawRobot(robotPositionList.front());
                         }
+                        
+                        
                         rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
                         monitor.Write(msgPos); // The message is deleted with the Write
                         rt_mutex_release(&mutex_monitor);
@@ -723,13 +754,18 @@ void Tasks::periodic_cameraSendTask(void) {
     }
 }
 
+/**
+ * @brief Task that, when demanded by the monitor, finds the arena. If an
+ * arena is accepted, adds this arena to a shared variable s.t. the camera 
+ * thread can add the arena to the images it sends.
+ */
 void Tasks::findArenaTask(void) {
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
 
     Arena potentialArena;
-
+    
     bool cameraWasClosed = false;
 
     // For ack/nack message
