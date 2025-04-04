@@ -168,20 +168,24 @@ private:
     void MoveTask(void *arg);
     
     /**
-     * @brief Thread handling checking of battery status.
-     */
+    * @brief Thread that periodically sends robot's battery status to monitor
+    */
     void periodic_GetBatteryStatusTask(void);
-    
-     /**
-     * @brief Thread handling sending of images from camera.
+
+    /**
+     * @brief Thread handling periodic sending of images from camera.
+     * if an arena has been found, also adds arena to image.
+     * if position calculation is enabled, also sends position and adds it to 
+     * the image
      */
     void periodic_cameraSendTask(void);
-    
-     /**
-     * @brief Thread handling opening and closing of camera.
+
+    /**
+     * @brief Thread handling opening and closing of camera, as well as turning
+     * the image stream on/off.
      */
     void cameraChangeActivityTask(void);
-    
+
     
     /**********************************************************************/
     /* Queue services                                                     */
@@ -200,9 +204,11 @@ private:
      */
     Message *ReadInQueue(RT_QUEUE *queue);
 
-    
+
     /**
-     * Finds arena and sends to monitor
+     * @brief Task that, when demanded by the monitor, finds the arena. If an
+     * arena is accepted, adds this arena to a shared variable s.t. the camera 
+     * thread can add the arena to the images it sends.
      */
     void findArenaTask(void);
     
